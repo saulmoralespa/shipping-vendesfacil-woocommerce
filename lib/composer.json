@@ -1,0 +1,6 @@
+{
+    "require": {
+        "saulmoralespa/vendes-facil": "^1.0",
+        "saulmoralespa/coordinadora-webservice-php": "^1.0"
+    }
+}
