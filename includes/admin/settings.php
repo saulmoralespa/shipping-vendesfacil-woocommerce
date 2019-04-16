@@ -42,7 +42,7 @@ return array_merge(
         'enabled' => array(
             'title' => __('Activar/Desactivar'),
             'type' => 'checkbox',
-            'label' => __('Activar  Coordinadora'),
+            'label' => __('Activar  VendesFácil'),
             'default' => 'no'
         ),
         'title'        => array(

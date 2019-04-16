@@ -113,21 +113,31 @@ class Shipping_VendesFacil_WC extends WC_Shipping_Method_Shipping_VendeFacil_WC
     {
         $instance = new self();
 
-        if( $order->has_shipping_method($instance->id) ){
+        global $wpdb;
+        $table_name_vendes_facil = $wpdb->prefix . 'coordinadora_vendes_facil';
 
-            $txid = get_post_meta($order_id, 'txid_vendesfacil', true);
+        if( !$order->has_shipping_method($instance->id) )
+            return;
+        $txid = get_post_meta($order_id, 'txid_vendesfacil', true);
 
-            if (empty($txid) &&  $new_status === 'processing'){
+        if (empty($txid) &&  $new_status === 'processing'){
 
-                $res = $instance->transaction($order);
+            $res = $instance->transaction($order);
 
-                if (isset($res))
-                $txid_note = sprintf( __( 'Url de pago transporte VendeFácil <a target="_blank" href="%1$s">clic aquí</a>.' ), $res->url );
-                update_post_meta($order_id, 'txid_vendesfacil', $res->txid);
-                $order->add_order_note($txid_note);
+            if (is_null($res))
+                return;
 
-            }
+            $wpdb->insert(
+                $table_name_vendes_facil,
+                array(
+                    'order_id' => $order_id,
+                    'txid' => $res->txid
+                )
+            );
 
+            $txid_note = sprintf( __( 'Url de pago transporte VendeFácil <a target="_blank" href="%1$s">clic aquí</a>.' ), $res->url );
+            update_post_meta($order_id, 'txid_vendesfacil', $res->txid);
+            $order->add_order_note($txid_note);
         }
 
     }
@@ -159,7 +169,7 @@ class Shipping_VendesFacil_WC extends WC_Shipping_Method_Shipping_VendeFacil_WC
             $products[] = [
                 'nombre' => $_product->get_name(),
                 'referencia' => !empty($_product->get_sku()) ? $_product->get_sku() : $_product->get_slug(),
-                'imagen' => $_product->get_image(),
+                'imagen' => wp_get_attachment_url($_product->get_image_id()),
                 'precio' => $_product->get_price(),
                 'por_impuesto' => 19,
                 'alto'     => $_product->get_height(),
@@ -178,7 +188,7 @@ class Shipping_VendesFacil_WC extends WC_Shipping_Method_Shipping_VendeFacil_WC
             "moneda" => "COP",
             "base_devolucion_impuestos" => 0,
             "total_impuestos" => 0,
-            "total" => 0,
+            "total" => $total_shipping,
             "total_transporte" => $total_shipping,
             "descripcion" => "Compra en " . get_bloginfo( 'name' ),
             "fechahora_expiracion" => "",
@@ -201,7 +211,7 @@ class Shipping_VendesFacil_WC extends WC_Shipping_Method_Shipping_VendeFacil_WC
                 "direccion" => $direccion_destinatario,
                 "telefono" => $phone,
                 "codigo_pais" => "CO",
-                "codigo_ciudad" => $ciudad_destinatario,
+                "codigo_ciudad" => $ciudad_destinatario->codigo,
                 "codigo_postal" =>""
             ],
             "detalle" => $products,
@@ -245,12 +255,86 @@ class Shipping_VendesFacil_WC extends WC_Shipping_Method_Shipping_VendeFacil_WC
 
     public function confirmation_ipn()
     {
+        global $wpdb;
+        $table_name_vendes_facil = $wpdb->prefix . 'coordinadora_vendes_facil';
+        $instance = new self();
+
         $body = file_get_contents('php://input');
         parse_str($body, $data);
 
+        shipping_vendesfacil_wc_svwc()->log('data received');
+
         shipping_vendesfacil_wc_svwc()->log($data);
 
+        if(isset($data['estado_validacion']) && $data['estado_validacion'] === 'aprobado'){
+
+            $txid = $data['txid'];
+
+            $query = "SELECT order_id FROM $table_name_vendes_facil WHERE txid='$txid'";
+
+            $result = $wpdb->get_row( $query );
+
+            shipping_vendesfacil_wc_svwc()->log('data processing');
+
+            shipping_vendesfacil_wc_svwc()->log($result);
+
+
+            if (!isset($result->order_id))
+                return;
+
+            $order_id = $result->order_id;
+            $order = wc_get_order($order_id);
+            $items = $order->get_items();
+            $direccion_remitente = get_option( 'woocommerce_store_address' ) .
+                " " .  get_option( 'woocommerce_store_address_2' ) .
+                " " . get_option( 'woocommerce_store_city' );
+
+            $params = array(
+                "txid" => $txid,
+                "unidades_empaque" => $instance->getQuantityProduct($items),
+                "referencia" => $order->get_id(),
+                "identificacion" => $instance->identification_number,
+                "nombre" => get_bloginfo( 'name' ),
+                "direccion" => $direccion_remitente,
+                "telefono" => $instance->phone_sender,
+                "codigo_pais" => "CO",
+                "codigo_ciudad" => $instance->city_sender,
+                "contenido" => $instance->nameProducts($items)
+            );
+
+            try{
+                $instance->vendesFacil->documents($params);
+                $instance->vendesFacil->collection($txid);
+            }catch (\Exception $exception){
+                shipping_vendesfacil_wc_svwc()->log($exception->getMessage());
+            }
+
+        }
 
         header("HTTP/1.1 200 OK");
+    }
+
+
+    public function getQuantityProduct($items)
+    {
+        $item_quantity = 0;
+
+        foreach ($items as $item_id => $item_data){
+            $item_quantity += $item_data->get_quantity();
+        }
+
+        return $item_quantity;
+    }
+
+    public function nameProducts($items)
+    {
+        $namesProducts = array();
+
+        foreach ($items as $item){
+            $namesProducts[] = $item->get_name();
+        }
+
+        $names = implode(",",  $namesProducts);
+        return $names;
     }
 }

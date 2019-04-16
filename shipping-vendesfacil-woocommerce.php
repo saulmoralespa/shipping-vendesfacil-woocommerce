@@ -136,11 +136,15 @@ function shipping_vendesfacil_wc_svwc(){
 function activate_shipping_vendesfacil_wc_svwc() {
     global $wpdb;
 
-    $table_name = $wpdb->prefix . 'shipping_coordinadora_cities';
-    if ( $wpdb->get_var( "SHOW TABLES LIKE '$table_name'" ) !== $table_name ) {
-        $charset_collate = $wpdb->get_charset_collate();
+    $table_name_cities = $wpdb->prefix . 'shipping_coordinadora_cities';
+    $table_name_vendes_facil = $wpdb->prefix . 'coordinadora_vendes_facil';
+    $charset_collate = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE $table_name (
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '$table_name_cities '" ) !== $table_name_cities ) {
+
+        $sql = "CREATE TABLE $table_name_cities (
 		id mediumint(9) NOT NULL AUTO_INCREMENT,
 		nombre varchar(60) NOT NULL,
 		codigo varchar(8) NOT NULL,
@@ -148,9 +152,21 @@ function activate_shipping_vendesfacil_wc_svwc() {
 		PRIMARY KEY  (id)
 	) $charset_collate;";
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta( $sql );
     }
+
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '$table_name_vendes_facil '" ) !== $table_name_vendes_facil ) {
+
+        $sql = "CREATE TABLE $table_name_vendes_facil (
+		id mediumint(9) NOT NULL AUTO_INCREMENT,
+		order_id INT(10) NOT NULL,
+		txid VARCHAR(60) NOT NULL,
+		PRIMARY KEY  (id)
+	) $charset_collate;";
+
+        dbDelta( $sql );
+    }
+
     update_option( 'shipping_vendesfacil_wc_svwc_version', SHIPPING_VENDESFACIL_WC_SVWC_VERSION );
     add_option( 'shipping_vendesfacil_wc_svwc_redirect', true );
     wp_schedule_event( time(), 'daily', 'shipping_vendesfacil_wc_svwc_schedule' );
